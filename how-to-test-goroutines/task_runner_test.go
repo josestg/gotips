@@ -5,15 +5,14 @@ import (
 	"context"
 	"log/slog"
 	"math/rand"
-	"sync"
 	"testing"
 	"time"
+
+	"github.com/josestg/gotips/how-to-test-goroutines/await"
 )
 
-func NewTask(l *slog.Logger, name string, wg *sync.WaitGroup) Task {
+func NewTask(l *slog.Logger, name string) Task {
 	return func(ctx context.Context, args []string) {
-		defer wg.Done()
-
 		l.InfoContext(ctx, "Task started", "name", name)
 		delay := time.Duration(rand.Intn(5)*100) * time.Millisecond
 		select {
@@ -29,18 +28,14 @@ func TestTaskRunner_Run(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&logHistory, &slog.HandlerOptions{}))
 	defer func() { t.Log(logHistory.String()) }()
 
-	var wg sync.WaitGroup
-	wg.Add(3)
-
-	task1 := NewTask(logger, "task1", &wg)
-	task2 := NewTask(logger, "task2", &wg)
-	task3 := NewTask(logger, "task3", &wg)
+	task1 := NewTask(logger, "task1")
+	task2 := NewTask(logger, "task2")
+	task3 := NewTask(logger, "task3")
 
 	runner := NewTaskRunner(logger, task1, task2, task3)
 
 	ctx := context.Background()
+	ctx = await.Context(ctx)
 	args := []string{"a", "b", "c"}
 	runner.Run(ctx, args)
-
-	wg.Wait()
 }
