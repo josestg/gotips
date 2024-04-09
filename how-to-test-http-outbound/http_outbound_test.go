@@ -2,16 +2,13 @@ package how_to_test_http_outbound
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
-	"net/http/httptest"
-	"os"
-	"strconv"
 	"testing"
+
+	"github.com/josestg/gotips/how-to-test-http-outbound/transporttest"
 )
 
 var (
-	testServer    *httptest.Server
 	testDataPosts = []Post{
 		{ID: 1, UserID: 1, Title: "title1", Body: "body1"},
 		{ID: 2, UserID: 1, Title: "title2", Body: "body2"},
@@ -19,42 +16,15 @@ var (
 	}
 )
 
-func TestMain(m *testing.M) {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /posts", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(testDataPosts)
-	})
-
-	mux.HandleFunc("GET /posts/{id}", func(w http.ResponseWriter, r *http.Request) {
-		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-		if err != nil {
-			http.Error(w, "invalid id", http.StatusBadRequest)
-			return
-		}
-
-		for _, p := range testDataPosts {
-			if p.ID == id {
-				w.Header().Set("Content-Type", "application/json")
-				_ = json.NewEncoder(w).Encode(p)
-				return
-			}
-		}
-
-		http.Error(w, "post not found", http.StatusNotFound)
-	})
-
-	testServer = httptest.NewServer(mux)
-
-	exitCode := m.Run()
-	testServer.Close()
-	os.Exit(exitCode)
-}
-
 func TestJSONPlaceholderOutbound_GetPosts(t *testing.T) {
-	client := testServer.Client()
-	jp := NewJSONPlaceholderOutbound(client, testServer.URL)
+	client := transporttest.NewClient(
+		transporttest.AssertHost(t, "example.com"),
+		transporttest.AssertMethod(t, http.MethodGet),
+		transporttest.AssertPath(t, "/posts"),
+		transporttest.RespondJSON(testDataPosts, http.StatusOK),
+	)
 
+	jp := NewJSONPlaceholderOutbound(client, "https://example.com")
 	posts, err := jp.GetPosts(context.Background())
 	if err != nil {
 		t.Fatalf("GetPosts failed: %v", err)
@@ -72,17 +42,20 @@ func TestJSONPlaceholderOutbound_GetPosts(t *testing.T) {
 }
 
 func TestJSONPlaceholderOutbound_GetPost(t *testing.T) {
-	client := testServer.Client()
-	jp := NewJSONPlaceholderOutbound(client, testServer.URL)
+	client := transporttest.NewClient(
+		transporttest.AssertHost(t, "example.com"),
+		transporttest.AssertMethod(t, http.MethodGet),
+		transporttest.AssertPath(t, "/posts/1"),
+		transporttest.RespondJSON(testDataPosts[0], http.StatusOK),
+	)
 
-	for _, want := range testDataPosts {
-		got, err := jp.GetPost(context.Background(), want.ID)
-		if err != nil {
-			t.Fatalf("GetPost failed: %v", err)
-		}
+	jp := NewJSONPlaceholderOutbound(client, "https://example.com")
+	post, err := jp.GetPost(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("GetPost failed: %v", err)
+	}
 
-		if *got != want {
-			t.Errorf("GetPost returned post %d: got %v, want %v", want.ID, got, want)
-		}
+	if *post != testDataPosts[0] {
+		t.Errorf("GetPost returned: got %v, want %v", *post, testDataPosts[0])
 	}
 }
